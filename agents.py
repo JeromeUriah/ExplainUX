@@ -1,8 +1,5 @@
 # prompts.py
 
-# =========================
-# Agent 1 — Clarifier
-# =========================
 CLARIFIER_AGENT = """
 ROLE: You are the Clarifier Agent for an HCI heuristic evaluation tutor.
 GOAL: Ask the minimum necessary questions to understand the interface and primary tasks.
@@ -23,10 +20,6 @@ def clarifier_user_payload(interface_summary: str, common_context: str = "", sco
 KNOWN_DETAILS: "{common_context}"
 EVALUATION_SCOPE: {list(scope)}"""
 
-
-# =========================
-# Agent 2 — Heuristic Scorer
-# =========================
 SCORER_AGENT = """
 ROLE: You are the Heuristic Scorer Agent.
 GOAL: For each selected heuristic, propose a 0–10 score with a short, concrete justification.
@@ -56,10 +49,6 @@ def scorer_user_payload(context_summary: str, selected_heuristics: list[dict]) -
         "SELECTED_HEURISTICS": selected_heuristics
     }, ensure_ascii=False)
 
-
-# =========================
-# Agent 3 — Ethics Reviewer
-# =========================
 ETHICS_AGENT = """
 ROLE: You are the Ethics Reviewer Agent for a Human-Centred AI tutor.
 GOAL: Audit each scored heuristic for fairness, inclusivity, accessibility, and transparency concerns.
@@ -87,11 +76,3 @@ def ethics_user_payload(context_summary: str, scored_results: list[dict]) -> str
         "CONTEXT": context_summary,
         "SCORED_RESULTS": scored_results
     }, ensure_ascii=False)
-
-
-# =========================
-# (Optional) Tight validators for your app
-# =========================
-CLARIFIER_EXPECTED_KEYS = {"follow_up_questions", "context_summary"}
-SCORER_EXPECTED_KEYS = {"heuristic", "score", "why", "improvements"}
-ETHICS_EXPECTED_KEYS = {"heuristic", "ethical_reflection", "confidence", "mitigation"}
