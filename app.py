@@ -12,16 +12,16 @@ from agents import (
     clarifier_user_payload, scorer_user_payload, ethics_user_payload,
 )
 
-# ---------- setup ----------
+# setup 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-MODEL = "gemini-2.5-flash"  # or "gemini-2.5-pro" for deeper reasoning
+MODEL = "gemini-2.5-flash" 
 
 st.set_page_config(page_title="ExplainUX – Heuristic Helper", page_icon="🧠")
 st.title("🧠 ExplainUX – Heuristic Helper")
 st.caption("Powered by Gemini 2.5 for adaptive, transparent UX evaluation.")
 
-# ---- state init ----
+# state init 
 if "has_run" not in st.session_state:
     st.session_state.has_run = False
 
@@ -31,8 +31,9 @@ st.session_state.setdefault("clarifier", {})
 st.session_state.setdefault("fu_answers", {})
 st.session_state.setdefault("rerun_requested", False)
 st.session_state.setdefault("last_rows", [])
+st.session_state.setdefault("recompute", False) 
 
-# ---------- helper ----------
+# ---------- helpers ----------
 def _chat_json(system_prompt: str, user_payload):
     # Ensure string payload
     if not isinstance(user_payload, str):
@@ -50,13 +51,7 @@ def _chat_json(system_prompt: str, user_payload):
             contents=[Content(role="user", parts=[Part.from_text(text=prompt)])],
             config=GenerateContentConfig(
                 response_mime_type="application/json",
-                # Optional knobs:
-                # temperature=0.2,
-                # top_p=0.9,
-                # candidate_count=1,
             ),
-            # If you prefer true “system” guidance, you can ALSO pass this:
-            # system_instruction=Content(role="system", parts=[Part.from_text(text=system_prompt)]),
         )
 
         text = (resp.text or "").strip()
@@ -133,6 +128,32 @@ def render_results_table_or_cards(df: pd.DataFrame):
         key=f"download_csv_{st.session_state.download_key_counter}",
     )
 
+def run_pipeline(context_summary, chosen):
+    """Runs Scorer + Ethics and returns list[dict] rows WITHOUT calling Clarifier."""
+    scorer_payload = scorer_user_payload(context_summary, chosen)
+    scored = _chat_json(SCORER_AGENT, scorer_payload)
+    if isinstance(scored, dict): scored = [scored]
+    if not isinstance(scored, list): scored = []
+
+    ethics_payload = ethics_user_payload(context_summary, scored)
+    ethics = _chat_json(ETHICS_AGENT, ethics_payload)
+    if isinstance(ethics, dict): ethics = [ethics]
+    if not isinstance(ethics, list): ethics = []
+
+    rows = []
+    for i, s in enumerate(scored):
+        e = ethics[i] if i < len(ethics) else {}
+        rows.append({
+            "Heuristic": s.get("heuristic"),
+            "Score (0–10)": s.get("score"),
+            "Why": s.get("why"),
+            "Improvements": "; ".join(s.get("improvements", [])) if isinstance(s.get("improvements"), list) else s.get("improvements"),
+            "Ethical Reflection": e.get("ethical_reflection"),
+            "Confidence": e.get("confidence"),
+            "Mitigation": e.get("mitigation"),
+        })
+    return rows
+
 # ---------- main logic ----------
 interface_summary = st.text_area(
     "Describe the interface you're evaluating:",
@@ -150,12 +171,12 @@ if run:
         st.warning("Please describe your interface first.")
     else:
         with st.spinner("Running Clarifier → Scorer → Ethics..."):
-            # 1) Clarifier
+            # 1) Clarifier (only on explicit Run)
             clarifier_payload = clarifier_user_payload(interface_summary)
             clarifier = _chat_json(CLARIFIER_AGENT, clarifier_payload) or {}
             context_summary = clarifier.get("context_summary", interface_summary)
 
-            # 2) Scorer
+            # 2) Choose heuristics
             selected_ids = []
             for s in selected_labels:
                 try:
@@ -164,63 +185,28 @@ if run:
                     pass
             chosen = [h for h in NIELSEN_HEURISTICS if int(h["id"]) in selected_ids] or NIELSEN_HEURISTICS[:1]
 
-            scorer_payload = scorer_user_payload(context_summary, chosen)
-            scored = _chat_json(SCORER_AGENT, scorer_payload)
-            if isinstance(scored, dict):
-                scored = [scored]
-            if not isinstance(scored, list):
-                scored = []
+            # 3) Scorer + Ethics (via helper)
+            rows = run_pipeline(context_summary, chosen)
 
-            # 3) Ethics
-            ethics_payload = ethics_user_payload(context_summary, scored)
-            ethics = _chat_json(ETHICS_AGENT, ethics_payload)
-            if isinstance(ethics, dict):
-                ethics = [ethics]
-            if not isinstance(ethics, list):
-                ethics = []
-
-            # 4) Table
-            rows = []
-            for i, s in enumerate(scored):
-                e = ethics[i] if i < len(ethics) else {}
-                rows.append({
-                    "Heuristic": s.get("heuristic"),
-                    "Score (0–10)": s.get("score"),
-                    "Why": s.get("why"),
-                    "Improvements": "; ".join(s.get("improvements", [])) if isinstance(s.get("improvements"), list) else s.get("improvements"),
-                    "Ethical Reflection": e.get("ethical_reflection"),
-                    "Confidence": e.get("confidence"),
-                    "Mitigation": e.get("mitigation"),
-                })
-
-            if rows:
-                df = pd.DataFrame(rows)
-                render_results_table_or_cards(df)
-            else:
-                st.info("No rows returned. Try adjusting your description or selected heuristics.")
-
-            # ✅ persist essentials for follow-ups
+            # 4) Persist essentials for follow-ups and rendering
             st.session_state.has_run = True
             st.session_state.context_summary = context_summary
             st.session_state.chosen = chosen
             st.session_state.clarifier = clarifier
             st.session_state.last_rows = rows
 
-    # --- Option B: Interactive chat-style follow-ups ---
-    if st.session_state.has_run:
-        clarifier = st.session_state.clarifier or {}
-        context_summary = st.session_state.context_summary or interface_summary
-        chosen = st.session_state.chosen
-
+if st.session_state.has_run:
+    clarifier = st.session_state.clarifier or {}
     if isinstance(clarifier.get("follow_up_questions"), list) and clarifier["follow_up_questions"]:
         st.markdown("### Follow-up questions to improve accuracy")
-
         for i, q in enumerate(clarifier["follow_up_questions"]):
             st.markdown(f"- **Q{i+1}. {q}**")
 
-        # Persist answers across reruns (already in session_state)
-        user_msg = st.chat_input("💬 Type your answer (mention the Q number).")
-        if user_msg:
+        # Form prevents recompute while typing
+        with st.form("fu_form", clear_on_submit=False):
+            user_msg = st.text_input("💬 Add an answer (mention the Q number).")
+            submitted = st.form_submit_button("Save answer")
+        if submitted and user_msg:
             st.session_state.fu_answers[str(len(st.session_state.fu_answers) + 1)] = user_msg
 
         if st.session_state.fu_answers:
@@ -228,42 +214,25 @@ if run:
             for k, v in st.session_state.fu_answers.items():
                 st.markdown(f"- A{k}: {v}")
 
-        # Button triggers a recompute on *this* run
-        def _do_rerun():
-            enriched_context = (
-                f"{context_summary}\n\n---\nUser's follow-up answers:\n"
-                + json.dumps(st.session_state.fu_answers, ensure_ascii=False, indent=2)
-            )
+        # Only set a flag here; compute happens in the gated block below
+        if st.button("🔁 Re-run with collected answers"):
+            st.session_state.recompute = True
 
-            scorer_payload = scorer_user_payload(enriched_context, chosen)
-            scored = _chat_json(SCORER_AGENT, scorer_payload)
-            if isinstance(scored, dict): 
-                scored = [scored]
-            if not isinstance(scored, list): 
-                scored = []
+# Single compute gate — runs only when the user clicks "Re-run with collected answers"
+if st.session_state.get("recompute"):
+    with st.spinner("Re-running with your follow-up answers..."):
+        context_summary = st.session_state.context_summary or ""
+        chosen = st.session_state.chosen or []
 
-            ethics_payload = ethics_user_payload(enriched_context, scored)
-            ethics = _chat_json(ETHICS_AGENT, ethics_payload)
-            if isinstance(ethics, dict): 
-                ethics = [ethics]
-            if not isinstance(ethics, list): 
-                ethics = []
+        enriched_context = (
+            f"{context_summary}\n\n---\nUser's follow-up answers:\n"
+            + json.dumps(st.session_state.fu_answers, ensure_ascii=False, indent=2)
+            if st.session_state.fu_answers else context_summary
+        )
 
-            rows = []
-            for i, s in enumerate(scored):
-                e = ethics[i] if i < len(ethics) else {}
-                rows.append({
-                    "Heuristic": s.get("heuristic"),
-                    "Score (0–10)": s.get("score"),
-                    "Why": s.get("why"),
-                    "Improvements": "; ".join(s.get("improvements", [])) if isinstance(s.get("improvements"), list) else s.get("improvements"),
-                    "Ethical Reflection": e.get("ethical_reflection"),
-                    "Confidence": e.get("confidence"),
-                    "Mitigation": e.get("mitigation"),
-                })
-            st.session_state.last_rows = rows
+        st.session_state.last_rows = run_pipeline(enriched_context, chosen)
 
-        st.button("🔁 Re-run with collected answers", on_click=_do_rerun)
+    st.session_state.recompute = False
 
 # If we have rows from either initial run or a re-run, render them
 if st.session_state.last_rows:
