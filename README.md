@@ -1,4 +1,5 @@
 -- ExplainUX --
+
 ExplainUX is a Python-based UX evaluation assistant that applies structured heuristic analysis through modular agents to generate explainable usability insights.
 The project demonstrates the integration of UX theory, heuristic frameworks, and programmatic reasoning to support structured evaluation workflows.
 
@@ -13,12 +14,14 @@ The repository includes:
 * User_Eval Results.pdf — evaluation study results
 
 -- Core Capabilities --
+
 * Modular agent-based architecture
 * Structured heuristic evaluation logic
 * Programmatic UX interpretation
 * Research-oriented documentation and evaluation outputs
 
 -- Technologies --
+
 Python 3
 Modular architecture design
 Heuristic evaluation frameworks
