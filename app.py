@@ -56,7 +56,6 @@ def _chat_json(system_prompt: str, user_payload):
 
         text = (resp.text or "").strip()
 
-        # Be resilient to accidental code fences
         if text.startswith("```"):
             # remove ```json ... ``` or ``` ...
             first_newline = text.find("\n")
@@ -75,7 +74,6 @@ def _chat_json(system_prompt: str, user_payload):
         raise
 
 def render_results_table_or_cards(df: pd.DataFrame):
-    # If segmented_control isn't available in your Streamlit, swap to st.radio (see fallback below)
     try:
         view_mode = st.segmented_control(
             "View as",
@@ -171,7 +169,7 @@ if run:
         st.warning("Please describe your interface first.")
     else:
         with st.spinner("Running Clarifier → Scorer → Ethics..."):
-            # 1) Clarifier (only on explicit Run)
+            # 1) Clarifier 
             clarifier_payload = clarifier_user_payload(interface_summary)
             clarifier = _chat_json(CLARIFIER_AGENT, clarifier_payload) or {}
             context_summary = clarifier.get("context_summary", interface_summary)
@@ -214,11 +212,9 @@ if st.session_state.has_run:
             for k, v in st.session_state.fu_answers.items():
                 st.markdown(f"- A{k}: {v}")
 
-        # Only set a flag here; compute happens in the gated block below
         if st.button("🔁 Re-run with collected answers"):
             st.session_state.recompute = True
 
-# Single compute gate — runs only when the user clicks "Re-run with collected answers"
 if st.session_state.get("recompute"):
     with st.spinner("Re-running with your follow-up answers..."):
         context_summary = st.session_state.context_summary or ""
