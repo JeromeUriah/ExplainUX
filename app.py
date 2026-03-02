@@ -1,4 +1,4 @@
-# app.py
+# imports
 import os, json, pandas as pd, streamlit as st
 from dotenv import load_dotenv
 
@@ -33,13 +33,13 @@ st.session_state.setdefault("rerun_requested", False)
 st.session_state.setdefault("last_rows", [])
 st.session_state.setdefault("recompute", False) 
 
-# ---------- helpers ----------
+# helpers 
 def _chat_json(system_prompt: str, user_payload):
-    # Ensure string payload
+    # Ensure string
     if not isinstance(user_payload, str):
         user_payload = json.dumps(user_payload, ensure_ascii=False)
 
-    # Include an explicit instruction to return JSON only
+    # return JSON only
     prompt = (
         f"{system_prompt}\n\nUser Input:\n{user_payload}\n\n"
         "Return ONLY valid JSON. Do not add explanations or code fences."
@@ -152,7 +152,7 @@ def run_pipeline(context_summary, chosen):
         })
     return rows
 
-# ---------- main logic ----------
+# main logic
 interface_summary = st.text_area(
     "Describe the interface you're evaluating:",
     placeholder="e.g., A student dashboard showing assignments with colour-coded deadlines."
@@ -169,12 +169,12 @@ if run:
         st.warning("Please describe your interface first.")
     else:
         with st.spinner("Running Clarifier → Scorer → Ethics..."):
-            # 1) Clarifier 
+            # Clarifier 
             clarifier_payload = clarifier_user_payload(interface_summary)
             clarifier = _chat_json(CLARIFIER_AGENT, clarifier_payload) or {}
             context_summary = clarifier.get("context_summary", interface_summary)
 
-            # 2) Choose heuristics
+            # Choose heuristics
             selected_ids = []
             for s in selected_labels:
                 try:
@@ -183,10 +183,10 @@ if run:
                     pass
             chosen = [h for h in NIELSEN_HEURISTICS if int(h["id"]) in selected_ids] or NIELSEN_HEURISTICS[:1]
 
-            # 3) Scorer + Ethics (via helper)
+            # Scorer + Ethics (via helper)
             rows = run_pipeline(context_summary, chosen)
 
-            # 4) Persist essentials for follow-ups and rendering
+            # Persist essentials for follow-ups and rendering
             st.session_state.has_run = True
             st.session_state.context_summary = context_summary
             st.session_state.chosen = chosen
@@ -200,7 +200,7 @@ if st.session_state.has_run:
         for i, q in enumerate(clarifier["follow_up_questions"]):
             st.markdown(f"- **Q{i+1}. {q}**")
 
-        # Form prevents recompute while typing
+        # prevents recompute while typing
         with st.form("fu_form", clear_on_submit=False):
             user_msg = st.text_input("💬 Add an answer (mention the Q number).")
             submitted = st.form_submit_button("Save answer")
@@ -230,12 +230,12 @@ if st.session_state.get("recompute"):
 
     st.session_state.recompute = False
 
-# If we have rows from either initial run or a re-run, render them
+# render rows from either initial run or a re-run
 if st.session_state.last_rows:
     df = pd.DataFrame(st.session_state.last_rows)
     render_results_table_or_cards(df)
 
-# 🔧 --- DEBUG UTILITIES ---
+# Debugging
 with st.expander("Debug: list available models"):
     if st.button("List models now"):
         try:
